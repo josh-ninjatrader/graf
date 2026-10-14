@@ -2167,3 +2167,20 @@ fn sln_nested_projects_keep_unique_edge_ids() {
     assert!(contains("App.sln", "B"));
     assert!(!contains("App.sln", "A"));
 }
+
+#[test]
+fn csproj_utf8_bom_does_not_shift_offsets() {
+    let source = "<Project Sdk=\"Microsoft.NET.Sdk\">\n<PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>\n<ItemGroup><PackageReference Include=\"A\" Version=\"1\"/></ItemGroup>\n</Project>\n";
+    let summary = |f: &FileFacts| {
+        let nodes: Vec<_> = f.nodes.iter().map(|n| (n.label.clone(), n.line)).collect();
+        (nodes, f.edges.len(), f.references.len())
+    };
+    let expected = summary(&facts("App.csproj", source));
+    assert!(expected.0.iter().any(|(label, _)| label == "A"));
+    for prefix in ["\u{feff}", "\u{feff}\t"] {
+        let f = facts("App.csproj", &format!("{prefix}{source}"));
+        assert_eq!(summary(&f), expected, "prefix {prefix:?}");
+    }
+    let f = facts("App.csproj", &format!("\u{feff}\r\n{source}"));
+    assert_eq!(node(&f, "A").line, Some(4));
+}

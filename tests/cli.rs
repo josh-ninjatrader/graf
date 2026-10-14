@@ -606,6 +606,26 @@ fn human_output_escapes_controls_while_json_and_mcp_preserve_values() {
     );
 }
 
+#[test]
+fn usage_errors_keep_their_layout() {
+    let dir = tempdir().unwrap();
+    let bare = failure(cli(dir.path(), &[]));
+    assert!(
+        bare.contains("\n\nUsage: graf [OPTIONS] <COMMAND>\n"),
+        "{bare}"
+    );
+    assert!(bare.contains("graph's hubs"), "{bare}");
+    let unknown = failure(cli(dir.path(), &["-v"]));
+    assert!(
+        unknown.contains("unexpected argument '-v' found\n"),
+        "{unknown}"
+    );
+    assert!(!unknown.contains(r"\n"), "{unknown}");
+    let hostile = failure(cli(dir.path(), &["bad\x1b[2J\u{202e}\\"]));
+    assert_terminal_safe(&hostile);
+    assert!(hostile.contains(r"bad\u{1b}[2J\u{202e}\\"), "{hostile}");
+}
+
 #[cfg(unix)]
 #[test]
 fn human_diagnostics_and_root_escape_filename_controls() {

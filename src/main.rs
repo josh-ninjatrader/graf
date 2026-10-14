@@ -1301,10 +1301,25 @@ fn main() -> std::process::ExitCode {
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(error) => {
-            if error.use_stderr() {
+            if error.use_stderr()
+                && error.kind() != clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+            {
                 // Preserve argument controls until we can visibly escape them;
                 // StyledStr's plain Display would silently strip ANSI input.
-                eprintln!("{}", human(error.render().ansi().to_string().trim_end()));
+                let rendered = error.render().ansi().to_string();
+                let lines: Vec<String> = rendered
+                    .trim_end()
+                    .split('\n')
+                    .map(|line| {
+                        line.chars()
+                            .map(|c| match c {
+                                '\'' | '"' => c.to_string(),
+                                _ => c.escape_debug().to_string(),
+                            })
+                            .collect()
+                    })
+                    .collect();
+                eprintln!("{}", lines.join("\n"));
             } else {
                 // Help/version contain only static command metadata.
                 let _ = error.print();

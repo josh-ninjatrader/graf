@@ -3157,8 +3157,19 @@ struct CompiledInventory {
     parents: BTreeMap<String, String>,
     types: BTreeMap<(String, String), Vec<String>>,
     bases: BTreeMap<String, Option<Vec<String>>>,
+    bindings: BTreeMap<String, Vec<String>>,
 }
 impl CompiledInventory {
+    fn shared_partial(&self, key: &str) -> Option<String> {
+        let ids = self.bindings.get(key)?;
+        let unit = self.unit(&self.nodes[&ids[0]]);
+        (ids.len() > 1
+            && ids.iter().all(|id| {
+                let n = &self.nodes[id];
+                type_node(n) && n.metadata["partial"] == true && self.unit(n) == unit
+            }))
+        .then(|| ids[0].clone())
+    }
     fn unit(&self, node: &crate::model::Node) -> String {
         if let Some(module) = node.metadata["swift_module"].as_str() {
             return format!("swift:{module}");
@@ -3417,6 +3428,7 @@ impl CompiledContext {
             parents: BTreeMap::new(),
             types: BTreeMap::new(),
             bases: BTreeMap::new(),
+            bindings: BTreeMap::new(),
         };
         let files: Vec<_> = files
             .iter()
@@ -3459,7 +3471,20 @@ impl CompiledContext {
                 }
             }
         }
-        for group in inventory.types.values_mut() {
+        for n in inventory.nodes.values() {
+            for key in node_keys(n) {
+                inventory
+                    .bindings
+                    .entry(key)
+                    .or_default()
+                    .push(n.id.clone());
+            }
+        }
+        for group in inventory
+            .types
+            .values_mut()
+            .chain(inventory.bindings.values_mut())
+        {
             group.sort();
             group.dedup();
         }
@@ -3601,7 +3626,9 @@ impl CompiledContext {
                 };
                 if r.relation == "calls" {
                     for key in &r.candidate_keys {
-                        if let Some(target) = inventory.canonical(source, key)
+                        if let Some(target) = inventory
+                            .canonical(source, key)
+                            .or_else(|| inventory.shared_partial(key))
                             && inventory.group(&target).len() > 1
                         {
                             let candidate = inventory.navigation_key(&target);
@@ -3739,7 +3766,9 @@ impl CompiledContext {
                     }
                 } else if !matches!(r.relation.as_str(), "declared_member" | "partial_of") {
                     for key in &r.candidate_keys {
-                        if let Some(target) = inventory.canonical(source, key)
+                        if let Some(target) = inventory
+                            .canonical(source, key)
+                            .or_else(|| inventory.shared_partial(key))
                             && inventory.group(&target).len() > 1
                         {
                             let candidate = inventory.navigation_key(&target);

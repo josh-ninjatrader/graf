@@ -1750,6 +1750,57 @@ fn inherited_nonvirtual_members_resolve_only_through_proven_base_chains() {
 }
 
 #[test]
+fn csharp_partial_type_resolves_from_another_unit() {
+    let snapshot = |extra: Option<FileFacts>| {
+        let mut files = vec![
+            facts("Core/One.cs", "namespace api; public partial class Hub {}"),
+            facts("Core/Two.cs", "namespace api; public partial class Hub {}"),
+            facts(
+                "Test/Run.cs",
+                "namespace api; class Run { void run(Hub value) {} }",
+            ),
+        ];
+        files.extend(extra);
+        let units = files
+            .iter()
+            .map(|f| (f.path.clone(), f.path.split('/').next().unwrap().to_owned()))
+            .collect();
+        let context = graf::languages::compiled::CompiledContext::new(&files, &units);
+        for f in &mut files {
+            context.apply(f);
+        }
+        compiled_snapshot(files)
+    };
+    let resolved = snapshot(None);
+    let primary = &resolved
+        .edges
+        .iter()
+        .find(|e| e.relation == "partial_of")
+        .expect("partial_of")
+        .target;
+    assert!(
+        resolved
+            .edges
+            .iter()
+            .any(|e| e.file.as_deref() == Some("Test/Run.cs") && &e.target == primary),
+        "{:?}",
+        resolved.edges
+    );
+    let other = snapshot(Some(facts(
+        "Other/Hub.cs",
+        "namespace api; public class Hub {}",
+    )));
+    assert!(
+        !other
+            .edges
+            .iter()
+            .any(|e| e.file.as_deref() == Some("Test/Run.cs") && e.target.contains("Hub")),
+        "{:?}",
+        other.edges
+    );
+}
+
+#[test]
 fn csharp_partial_and_interface_navigation_preserve_ambiguity_and_units() {
     let original = vec![
         facts(

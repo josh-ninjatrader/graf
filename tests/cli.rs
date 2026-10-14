@@ -606,6 +606,33 @@ fn human_output_escapes_controls_while_json_and_mcp_preserve_values() {
     );
 }
 
+#[test]
+fn help_lists_subcommands_alphabetically() {
+    let dir = tempdir().unwrap();
+    for args in [
+        vec!["--help"],
+        vec!["global", "--help"],
+        vec!["provider", "--help"],
+        vec!["hook", "--help"],
+    ] {
+        let output = cli(dir.path(), &args);
+        assert!(output.status.success());
+        let help = String::from_utf8(output.stdout).unwrap();
+        let names: Vec<_> = help
+            .lines()
+            .skip_while(|line| *line != "Commands:")
+            .skip(1)
+            .take_while(|line| !line.is_empty())
+            .filter_map(|line| line.split_whitespace().next())
+            .filter(|name| *name != "help")
+            .collect();
+        let mut sorted = names.clone();
+        sorted.sort();
+        assert!(names.len() > 1, "{args:?}: {help}");
+        assert_eq!(names, sorted, "{args:?}");
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn human_diagnostics_and_root_escape_filename_controls() {

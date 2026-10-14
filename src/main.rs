@@ -13,7 +13,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail, ensure};
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use graf::{hook_guard, import, index, model::*, store::Store};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -1297,8 +1297,22 @@ fn append_query_log(path: &Path, record: &serde_json::Value) -> Result<()> {
     Ok(())
 }
 
+fn alphabetical(mut command: clap::Command) -> clap::Command {
+    let names: Vec<String> = command
+        .get_subcommands()
+        .map(|s| s.get_name().to_owned())
+        .collect();
+    for name in names {
+        command = command.mut_subcommand(name, |s| alphabetical(s.display_order(None)));
+    }
+    command
+}
+
 fn main() -> std::process::ExitCode {
-    let cli = match Cli::try_parse() {
+    let cli = match alphabetical(Cli::command())
+        .try_get_matches()
+        .and_then(|mut matches| Cli::from_arg_matches_mut(&mut matches))
+    {
         Ok(cli) => cli,
         Err(error) => {
             if error.use_stderr() {
